@@ -9,162 +9,137 @@
 
 using namespace std;
 
-// Constructor
 RoomManager::RoomManager(string file) {
     fileName = file;
     loadRooms();
 }
 
-// Load rooms from file
 void RoomManager::loadRooms() {
-
     rooms.clear();
 
-    ifstream file(fileName);
+    ifstream inFile(fileName);
 
-    if (!file.is_open()) {
-        cout << "Room data file not found. Starting empty.\n";
+    if (!inFile.is_open()) {
+        cout << "Room data file not found. Starting with empty records.\n";
         return;
     }
 
     string line;
 
-    while (getline(file, line)) {
-
-        if (line.empty())
+    while (getline(inFile, line)) {
+        if (line.empty()) {
             continue;
+        }
+
+        stringstream ss(line);
+
+        string numberText, type, priceText, availabilityText;
 
         try {
-            stringstream ss(line);
-
-            string number, type, price, availability;
-
-            if (!getline(ss, number, '|') ||
+            if (!getline(ss, numberText, '|') ||
                 !getline(ss, type, '|') ||
-                !getline(ss, price, '|') ||
-                !getline(ss, availability, '|')) {
-                cout << "Skipping invalid room record.\n";
+                !getline(ss, priceText, '|') ||
+                !getline(ss, availabilityText)) {
                 continue;
             }
 
-            int roomNo = stoi(number);
-            double roomPrice = stod(price);
+            int number = stoi(numberText);
+            double price = stod(priceText);
+            int availability = stoi(availabilityText);
 
-            if (availability != "0" && availability != "1") {
-                cout << "Skipping invalid availability record.\n";
+            if (number <= 0 || price <= 0 ||
+                (availability != 0 && availability != 1)) {
                 continue;
             }
-
-            bool available = (availability == "1");
 
             bool duplicate = false;
 
             for (const Room& room : rooms) {
-                if (room.getRoomNumber() == roomNo) {
+                if (room.getRoomNumber() == number) {
                     duplicate = true;
                     break;
                 }
             }
 
-            if (duplicate) {
-                cout << "Skipping duplicate room record: "
-                     << roomNo << endl;
-                continue;
+            if (!duplicate) {
+                rooms.emplace_back(
+                    number, type, price, availability == 1
+                );
             }
-
-            rooms.emplace_back(
-                roomNo, type, roomPrice, available
-            );
-
         }
-        catch (const exception& e) {
-            cout << "Invalid record skipped: "
-                 << e.what() << endl;
+        catch (...) {
+            cout << "Skipping an invalid room record.\n";
         }
     }
 
-    file.close();
-
-    cout << "Room records loaded successfully.\n";
+    inFile.close();
 }
 
-// Save rooms to file
 void RoomManager::saveRooms() const {
+    ofstream outFile(fileName);
 
-    ofstream file(fileName);
-
-    if (!file.is_open())
-        throw runtime_error("Unable to save room records.");
-
-    for (const Room& room : rooms) {
-
-        file << room.getRoomNumber() << "|"
-             << room.getRoomType() << "|"
-             << fixed << setprecision(2)
-             << room.getPricePerNight() << "|"
-             << (room.getAvailability() ? 1 : 0)
-             << endl;
+    if (!outFile.is_open()) {
+        throw runtime_error("Unable to save room data.");
     }
 
-    file.close();
-}
-
-// Add a new room
-void RoomManager::addRoom(
-    int number, string type, double price) {
-
     for (const Room& room : rooms) {
-
-        if (room.getRoomNumber() == number)
-            throw runtime_error("Room already exists.");
+        outFile << room.getRoomNumber() << "|"
+                << room.getRoomType() << "|"
+                << room.getPricePerNight() << "|"
+                << (room.getAvailability() ? 1 : 0)
+                << "\n";
     }
 
-    rooms.emplace_back(number, type, price, true);
-
-    saveRooms();
-
-    cout << "Room added successfully.\n";
+    outFile.close();
 }
 
-// Display all rooms
+void RoomManager::addRoom(int number, string type, double price) {
+    if (roomExists(number)) {
+        cout << "Room already exists.\n";
+        return;
+    }
+
+    try {
+        rooms.emplace_back(number, type, price, true);
+        saveRooms();
+
+        cout << "Room added successfully.\n";
+    }
+    catch (const exception& e) {
+        if (!rooms.empty() &&
+            rooms.back().getRoomNumber() == number) {
+            rooms.pop_back();
+        }
+
+        cout << "Error: " << e.what() << endl;
+    }
+}
+
 void RoomManager::displayAllRooms() const {
-
     if (rooms.empty()) {
         cout << "\nNo rooms available.\n";
         return;
     }
 
-    cout << "\n========== ROOM DETAILS ==========\n";
+    cout << "\n================ ROOM LIST ================\n";
 
     cout << left
          << setw(15) << "Room Number"
-         << setw(18) << "Room Type"
-         << setw(18) << "Price/Night"
-         << setw(15) << "Status"
-         << endl;
+         << setw(15) << "Room Type"
+         << setw(15) << "Price"
+         << setw(15) << "Availability" << endl;
 
-    cout << string(66, '-') << endl;
-
-    for (const Room& room : rooms)
-        room.displayRoom();
-}
-
-// Search room
-void RoomManager::searchRoom(int number) const {
+    cout << string(60, '-') << endl;
 
     for (const Room& room : rooms) {
+        room.displayRoom();
+    }
+}
 
+void RoomManager::searchRoom(int number) const {
+    for (const Room& room : rooms) {
         if (room.getRoomNumber() == number) {
-
             cout << "\nRoom found:\n";
-
-            cout << left
-                 << setw(15) << "Room Number"
-                 << setw(18) << "Room Type"
-                 << setw(18) << "Price/Night"
-                 << setw(15) << "Status"
-                 << endl;
-
             room.displayRoom();
             return;
         }
@@ -173,19 +148,18 @@ void RoomManager::searchRoom(int number) const {
     cout << "Room not found.\n";
 }
 
-// Update room
-void RoomManager::updateRoom(
-    int number, string type, double price) {
-
+void RoomManager::updateRoom(int number, string type, double price) {
     for (Room& room : rooms) {
-
         if (room.getRoomNumber() == number) {
+            try {
+                room.updateRoom(type, price);
+                saveRooms();
+                cout << "Room updated successfully.\n";
+            }
+            catch (const exception& e) {
+                cout << "Error: " << e.what() << endl;
+            }
 
-            room.updateRoom(type, price);
-
-            saveRooms();
-
-            cout << "Room updated successfully.\n";
             return;
         }
     }
@@ -193,41 +167,74 @@ void RoomManager::updateRoom(
     cout << "Room not found.\n";
 }
 
-// Change availability
-void RoomManager::changeAvailability(
-    int number, bool status) {
-
+void RoomManager::changeAvailability(int number, bool status) {
     for (Room& room : rooms) {
-
         if (room.getRoomNumber() == number) {
+            bool oldStatus = room.getAvailability();
 
-            room.setAvailability(status);
+            try {
+                room.setAvailability(status);
+                saveRooms();
+            }
+            catch (const exception& e) {
+                room.setAvailability(oldStatus);
+                throw;
+            }
 
-            saveRooms();
-
-            cout << "Room availability updated successfully.\n";
             return;
         }
     }
 
-    cout << "Room not found.\n";
+    throw runtime_error("Room not found.");
 }
 
-// Delete room
 void RoomManager::deleteRoom(int number) {
-
     for (auto it = rooms.begin(); it != rooms.end(); ++it) {
-
         if (it->getRoomNumber() == number) {
+            if (!it->getAvailability()) {
+                cout << "Cannot delete an occupied room.\n";
+                return;
+            }
+
+            Room removedRoom = *it;
+            size_t position = static_cast<size_t>(
+                distance(rooms.begin(), it)
+            );
 
             rooms.erase(it);
 
-            saveRooms();
+            try {
+                saveRooms();
+                cout << "Room deleted successfully.\n";
+            }
+            catch (const exception& e) {
+                rooms.insert(rooms.begin() + position, removedRoom);
+                cout << "Error: " << e.what() << endl;
+            }
 
-            cout << "Room deleted successfully.\n";
             return;
         }
     }
 
     cout << "Room not found.\n";
+}
+
+bool RoomManager::roomExists(int number) const {
+    for (const Room& room : rooms) {
+        if (room.getRoomNumber() == number) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool RoomManager::isRoomAvailable(int number) const {
+    for (const Room& room : rooms) {
+        if (room.getRoomNumber() == number) {
+            return room.getAvailability();
+        }
+    }
+
+    return false;
 }
